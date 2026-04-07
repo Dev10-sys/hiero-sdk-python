@@ -8,24 +8,29 @@ on:
   issue_comment:
     types: [created, edited, deleted]
 
+permissions:
+  contents: read
+
 jobs:
   dispatch:
     runs-on: ubuntu-latest
+    # Only run on the Dev10-sys forks to avoid leaking event data to unauthorized hubs
+    if: github.repository_owner == 'Dev10-sys'
     steps:
       - name: Fetch repository context
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           sparse-checkout: .hiero-workflow.yml
 
       - name: Dispatch Event to Hub
         env:
           HUB_URL: ${{ secrets.HIERO_HUB_URL }}
-          HUB_TOKEN: ${{ secrets.HIERO_HUB_TOKEN }}
+          EVENT_PAYLOAD: ${{ toJSON(github.event) }}
         run: |
-          # Send a secure POST request to the Hiero Hub with event details
-          # The Hub will then decide what actions to take based on .hiero-workflow.yml
-          curl -X POST "$HUB_URL/webhooks" \
+          # Write payload to file to avoid command injection via JSON in shell arguments
+          echo "$EVENT_PAYLOAD" > payload.json
+          curl --fail -s -X POST "$HUB_URL/webhooks" \
             -H "Content-Type: application/json" \
             -H "X-GitHub-Event: ${{ github.event_name }}" \
             -H "X-GitHub-Delivery: ${{ github.run_id }}" \
-            -d '${{ toJSON(github.event) }}'
+            --data-binary @payload.json
